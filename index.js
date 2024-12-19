@@ -2,6 +2,7 @@ const DiamSdk = require("diamnet-sdk");
 const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
+const { Err } = require("diamnet-sdk/contract");
 require("dotenv").config();
 
 const pair = DiamSdk.Keypair.random();
@@ -30,7 +31,7 @@ const createAccount = async () => {
     try {
         console.log("Creating account...");
         const response = await axios.get(
-            `https://friendbot.diamcircle.io?addr=${encodeURIComponent(pair.publicKey())}`
+            `https://friendbot.diamcircle.io/?addr=${encodeURIComponent(pair.publicKey())}`
         );
         console.log("SUCCESS! You have a new account, Status Code:", response.status);
     } catch (error) {
@@ -40,18 +41,17 @@ const createAccount = async () => {
     updateEnv("PRIVATE_KEY", pair.secret());
 };
 
-const createLedgerAccount = async (publicKey) => {
+const createLedgerAccount = async (privateKey) => {
     console.log("Creating Ledger Account...");
     try {
-        const parentAccount = await server.loadAccount(publicKey);
         const childAccount = DiamSdk.Keypair.random();
+        const senderKeyPair = DiamSdk.Keypair.fromSecret(privateKey);
+        const parentAccount = await server.loadAccount(senderKeyPair.publicKey());
 
         let createAccountTx = new DiamSdk.TransactionBuilder(parentAccount, {
             fee: DiamSdk.BASE_FEE,
             networkPassphrase: DiamSdk.Networks.TESTNET,
-        });
-
-        createAccountTx = await createAccountTx
+        })
             .addOperation(
                 DiamSdk.Operation.createAccount({
                     destination: childAccount.publicKey(),
@@ -61,7 +61,7 @@ const createLedgerAccount = async (publicKey) => {
             .setTimeout(180)
             .build();
 
-        await createAccountTx.sign(pair);
+        createAccountTx.sign(senderKeyPair);
 
         let txRespone = await server.submitTransaction(createAccountTx).catch((error) => {
             console.log("Error submitting transaction", error);
@@ -75,6 +75,7 @@ const createLedgerAccount = async (publicKey) => {
 };
 
 const checkAccountBalance = async (publickey) => {
+    console.log("Fetching balance...");
     const account = await server.loadAccount(publickey);
 
     console.log(`Balances for account ${publickey}:`);
@@ -83,8 +84,52 @@ const checkAccountBalance = async (publickey) => {
     });
 };
 
+const sendPayment = async (senderPrivateKey, recieverPublicKey, amount) => {
+    console.log("Sending Payment...");
+
+    const sourceKeys = DiamSdk.Keypair.fromSecret(senderPrivateKey);
+
+    await server.loadAccount(recieverPublicKey).catch((error) => {
+        if (error instanceof DiamSdk.NotFoundError) {
+            throw new Error("The destination account doesn't exist");
+        } else {
+            console.log(error);
+        }
+    });
+
+    try {
+        const sourceAccount = await server.loadAccount(sourceKeys.publicKey());
+
+        let transaction = new DiamSdk.TransactionBuilder(sourceAccount, {
+            fee: DiamSdk.BASE_FEE,
+            networkPassphrase: DiamSdk.Networks.TESTNET,
+        })
+            .addOperation(
+                DiamSdk.Operation.payment({
+                    destination: recieverPublicKey,
+                    asset: DiamSdk.Asset.native(),
+                    amount: amount.toString(),
+                })
+            )
+            .addMemo(DiamSdk.Memo.text("Test Transaction"))
+            .setTimeout(180)
+            .build();
+
+        transaction.sign(sourceKeys);
+
+        const txResponse = await server.submitTransaction(transaction);
+        console.log(`Transaction ID: ${txResponse}`);
+    } catch (error) {
+        console.log("Error occured while sending payment:", error);
+    }
+};
+
 (async () => {
-    await createAccount();
-    //await createLedgerAccount(process.env.PUBLIC_KEY);
+    //await createAccount();
+    //await createLedgerAccount(process.env.PRIVATE_KEY);
     await checkAccountBalance(process.env.PUBLIC_KEY);
+    await checkAccountBalance(process.env.SECOND_PUB);
+    await sendPayment(process.env.PRIVATE_KEY, process.env.SECOND_PUB, 5);
+    await checkAccountBalance(process.env.PUBLIC_KEY);
+    await checkAccountBalance(process.env.SECOND_PUB);
 })();
