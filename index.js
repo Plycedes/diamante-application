@@ -4,6 +4,8 @@ const fs = require("fs");
 const path = require("path");
 const { Err } = require("diamnet-sdk/contract");
 require("dotenv").config();
+const { mintNFT } = require("./mint.js");
+const { createAndIssueAssets } = require("./assets.js");
 
 const pair = DiamSdk.Keypair.random();
 const server = new DiamSdk.Aurora.Server("https://diamtestnet.diamcircle.io/");
@@ -127,9 +129,10 @@ const sendPayment = async (senderPrivateKey, recieverPublicKey, amount) => {
 (async () => {
     //await createAccount();
     //await createLedgerAccount(process.env.PRIVATE_KEY);
-    await checkAccountBalance(process.env.PUBLIC_KEY);
-    await checkAccountBalance(process.env.SECOND_PUB);
-    await sendPayment(process.env.PRIVATE_KEY, process.env.SECOND_PUB, 5);
+    // await checkAccountBalance(process.env.PUBLIC_KEY);
+    // await checkAccountBalance(process.env.SECOND_PUB);
+    //await sendPayment(process.env.SECOND_PVT, process.env.PUBLIC_KEY, 20);
+    await createAndIssueAssets();
     await checkAccountBalance(process.env.PUBLIC_KEY);
     await checkAccountBalance(process.env.SECOND_PUB);
 })();
